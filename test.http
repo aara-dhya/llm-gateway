@@ -1,0 +1,9 @@
+### Test Basic Gateway
+POST http://localhost:8080/v1/chat/completions
+Content-Type: application/json
+Authorization: Bearer dummy-token-for-now
+
+{
+  "model": "gpt-3.5-turbo",
+  "messages": [{"role": "user", "content": "Hello, world!"}]
+}
