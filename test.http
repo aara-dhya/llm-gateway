@@ -7,3 +7,6 @@ Authorization: Bearer dummy-token-for-now
   "model": "gpt-3.5-turbo",
   "messages": [{"role": "user", "content": "Hello, world!"}]
 }
+
+### Fetch Metrics
+GET http://localhost:8080/api/metrics
