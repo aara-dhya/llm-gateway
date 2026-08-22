@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # 1. The Database Service
+  postgres:
+    image: postgres:15-alpine
+    container_name: gateway-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: llm_gateway
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. The Go Backend Service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gateway-api
+    ports:
+      - "8080:8080"
+    environment:
+      # Notice the host is now 'postgres' (the service name above), not 'localhost'!
+      DATABASE_URL: "host=postgres port=5432 user=postgres password=postgres dbname=llm_gateway sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # 3. The SvelteKit Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: gateway-ui
+    ports:
+      - "3000:3000" # Node adapter defaults to 3000 instead of Vite's 5173
+    depends_on:
+      - backend
+
+# Define persistent storage so our database survives container restarts
+volumes:
+  postgres_data:
