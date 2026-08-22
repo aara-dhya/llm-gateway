@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context" // Add this
 	"database/sql"
 	"encoding/json"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strings" // Add this
 	"time"
 
 	_ "github.com/lib/pq"
@@ -170,13 +172,42 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(logs)
 }
 
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 1. Extract API Key from the Authorization header
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+			http.Error(w, "Unauthorized: Missing or invalid token", http.StatusUnauthorized)
+			return
+		}
+		apiKey := strings.TrimPrefix(authHeader, "Bearer ")
+
+		// 2. Database Lookup & Balance Check
+		var userID int
+		var tokenBalance int
+		err := db.QueryRow("SELECT id, token_balance FROM users WHERE api_key = $1", apiKey).Scan(&userID, &tokenBalance)
+		if err != nil {
+			http.Error(w, "Unauthorized: Invalid API key", http.StatusUnauthorized)
+			return
+		}
+
+		if tokenBalance <= 0 {
+			http.Error(w, "Forbidden: Insufficient token balance", http.StatusForbidden)
+			return
+		}
+
+		// 3. Inject the user_id into the request context for logging later
+		ctx := context.WithValue(r.Context(), "userID", userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 func main() {
 	initDB()
 	defer db.Close()
 
 	// OpenAI Reverse Proxy Route
-	http.HandleFunc("/v1/chat/completions", handleProxy)
-
+	http.Handle("/v1/chat/completions", authMiddleware(http.HandlerFunc(handleProxy)))
 	// Observability Metrics REST Route
 	http.HandleFunc("/api/metrics", handleMetrics)
 
